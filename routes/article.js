@@ -5,53 +5,21 @@ const Article = require('../models/article');
 const User = require('../models/user');
 
 
-router.get('/add', ensureAuthenticated, (req, res)=>{
+router.route('/add').get(ensureAuthenticated, (req, res)=>{
 	res.render('add_article', {
 		title: 'Add article'
 	});
-});
-
-router.get('/:id', (req, res)=>{
-	console.log('req', req.params);
-	Article.findById(req.params.id, (err, article)=> {
-		console.log(err);
-		console.log(article);
-
-		User.findById(article.author, (err, user)=> {
-			console.log('user', user.username);
-			res.render('article', {
-				article,
-				author: user.username
-			});
-		});
-	});
-});
-
-router.get('/edit/:id', ensureAuthenticated, (req, res)=>{
-	Article.findById(req.params.id, (err, article)=> {
-		if (article.author !== req.user._id) {
-			res.redirect('/');			
-		}
-		res.render('edit_article', {
-			article
-		});
-	})
-});
-
-router.post(
-	'/add',
+}).post(
 	ensureAuthenticated,
 	[
 		check('title', 'Title is required').isLength({ min: 1 }),
 //		check('author', 'Author is required').isLength({ min: 1 }),
 		check('body', 'Body is required').isLength({ min: 1 })
 	],
-	(req, res)=>{
+	async (req, res)=>{
 		console.log('rrr', req.body);
 
 	const errors = validationResult(req);
-	console.log(errors.isEmpty());
-	console.log(errors.array());
 	if (!errors.isEmpty()) {
 		res.render('add_article', {
 			title: 'Add article',
@@ -59,74 +27,93 @@ router.post(
 		});
 		return;
 	}
-
 	let article = new Article();
 	article.title = req.body.title;
 	article.author = req.user._id;
-	article.body = req.body.body;
-	article.save((err)=>{
-		if (err) {
-			console.log(err);
-		} else {
-			console.log('AAAAAAAAAAAAAAAAAA');
-			req.flash("info", "Article added");
-			res.redirect('/');
-		}	
-	});
-	console.log(req.body.title);
-});
+	article.author = req.body.body;
 
-router.post('/edit/:id', ensureAuthenticated, (req, res)=>{
+	try {
+		await article.save();
+		req.flash("info", "Article added");
+		res.redirect('/');
+	} catch(err) {
+		console.log('CATCH ERROR1', err);
+	}
+
+});
+router.route('/:id')
+	.get(async (req, res)=>{
+		try {
+			const article = await Article.findById(req.params.id);
+			const user = await User.findById(article.author);
+			res.render('article', {
+				article,
+				author: user.username
+			});
+		} catch (e) {
+			console.log('CATCH ERROR', err);
+		    res.render('404');
+		}
+
+	})
+	.delete(async (req, res)=>{
+		try {
+
+			if (!req.user) {
+				throw "NO USER";
+			}
+			const article = await Article.findById(req.params.id);
+			if (article.author != req.user._id) {
+				throw "User mismatch";
+			}
+			article.remove();
+		} catch (e) {
+			console.log('ERRRRRRRRRRRRRRRRRRRRRRRROOOORRRR', e);
+			res.status(401).json({status: 'FAIL'});
+		}
+	});
+
+router.route('/edit/:id').get(ensureAuthenticated, async (req, res)=>{
+		try {
+			const article = await Article.findById(req.params.id);
+			if (article.author != req.user._id) {
+				return res.redirect('/');			
+			}
+			res.render('edit_article', {
+				article
+			});
+		} catch(e) {
+			console.log('CATCH ERROR', e);
+		}
+
+	}).post(ensureAuthenticated, async (req, res)=>{
 		let article = {};
+		let q = {_id: req.params.id};
+
 		article.title = req.body.title;
 		article.author = req.body.author;
 		article.body = req.body.body;
-		
-		let q = {_id: req.params.id};
 
-		Article.update(q, article, function(err){
-			if (err) {
-				console.log('err', err);
-			} else {
-				req.flash("success", "Article updated");
-				res.redirect('/');
-			}
-		});		
-
-//	Article.findById(req.params.id, (err, article)=> {
-		// article.title = req.body.title;
-		// article.author = req.body.author;
-		// article.title = req.body.body;
-		// article.save();
-
-		// res.render('edit_article', {
-		// 	article: article
-		// });
-//	})
-
-});
-
-router.delete('/:id', (req, res)=>{
-
-	if (!req.user) {
-		res.status(401).send();
-		return;
-	}
-
-
-	Article.findById(req.params.id, function(err, article){
-		if (article.author != req.user._id) {
-			res.status(403).send();
-		} else {
-			article.remove(()=>{
-				if (err) {
-					console.log('err', err);
-					res.status(500).send('Some error occured');
-				}
-				res.send('SUCCESS');
-			});
+		try {
+			await Article.update(q, article);
+			req.flash("success", "Article updated");
+			res.redirect('/');
+		} catch(err) {
+			console.log('CATCH ERROR', err);
 		}
+
+		//	Article.findById(req.params.id, (err, article)=> {
+				// article.title = req.body.title;
+				// article.author = req.body.author;
+				// article.title = req.body.body;
+				// article.save();
+
+				// res.render('edit_article', {
+				// 	article: article
+				// });
+		//	})
 	});
+
 
 /*	let q = {_id: req.params.id};
 	Article.remove(q, (err)=>{
@@ -136,7 +123,6 @@ router.delete('/:id', (req, res)=>{
 		res.send('SUCCESS');
 	});
 */	
-});
 
 // router.use(function (req, res, next) {
 //   res.locals.messages = require('express-messages')(req, res);

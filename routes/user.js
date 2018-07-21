@@ -19,7 +19,7 @@ router.post(
 		check('password', 'Password is required').isLength({ min: 1 }),
 		// check('password2', 'Passwords mismatch').isEqual(req.body.password),
 	],
-	(req, res)=>{
+	async (req, res)=>{
 
 	const errors = validationResult(req);
 	if (!errors.isEmpty()) {
@@ -38,25 +38,21 @@ router.post(
 			username,
 			password
 		});
+		console.log('bbbbbbbbbbbbbbbb', bcrypt.genSalt(10));
 
-		bcrypt.genSalt(10, function(err, salt) {
-		    bcrypt.hash(newUser.password, salt, function(err, hash) {
-
-				console.log('hash', hash);
-				if (err) {
-					console.log(err);
-				}
-				newUser.password = hash;
-				newUser.save((err)=>{
-					if (err) {
-						console.log(err);
-					} else {
-						req.flash("success", "You can login now");
-						res.redirect('/users/login');
-					}	
-				});
-		    });
-		});
+		try {
+			const hash = await bcrypt.genSalt(10).then((salt) => {
+				console.log('saltsaltsaltsaltsaltsaltsaltsalt', salt);
+			    return bcrypt.hash(newUser.password, salt);
+			});
+			newUser.password = hash;
+			await newUser.save();
+			req.flash("success", "You can login now");
+			res.redirect('/users/login');
+		} catch(err) {
+			console.log('CATCH ERROR', err);	
+		}
+		
 	}
 
 	// user.save((err)=>{
